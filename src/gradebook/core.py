@@ -1,66 +1,61 @@
-"""Simple student gradebook utilities (BASELINE version - contains known quality issues)."""
+"""Simple student gradebook utilities (FINAL version - quality issues fixed)."""
 import json
+import os
 
-ADMIN_PASSWORD = "admin123"
+NOT_AVAILABLE = "Not available"
+GRADE_BANDS = ((90, "A"), (80, "B"), (70, "C"), (60, "D"))
+
+
+def get_admin_password():
+    """Read the admin password from the environment instead of hard-coding it."""
+    return os.environ.get("GRADEBOOK_ADMIN_PASSWORD", "")
 
 
 def calculate_average(scores):
-    total = 0
-    count = 0
-    tempValue = 0
-    for s in scores:
-        total = total + s
-        count = count + 1
-    if count == 0:
+    """Return the mean of a list of numeric scores (0 for an empty list)."""
+    if not scores:
         return 0
-    return total / count
+    for score in scores:
+        if not isinstance(score, (int, float)) or isinstance(score, bool):
+            raise TypeError(f"score must be a number, got {score!r}")
+        if score < 0 or score > 100:
+            raise ValueError(f"score must be between 0 and 100, got {score}")
+    return sum(scores) / len(scores)
 
 
 def letter_grade(score):
-    if score >= 90:
-        return "A"
-    elif score >= 80:
-        return "B"
-    elif score >= 70:
-        return "C"
-    elif score >= 60:
-        return "D"
-    else:
-        return "F"
+    """Convert a numeric score to a letter grade."""
+    for minimum, letter in GRADE_BANDS:
+        if score >= minimum:
+            return letter
+    return "F"
 
 
 def load_students(path):
+    """Load a list of students from a JSON file; return [] if missing or invalid."""
     try:
-        f = open(path)
-        data = json.load(f)
-        f.close()
-        return data
-    except:
+        with open(path, encoding="utf-8") as file:
+            return json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
         return []
 
 
-def build_report(students, include_details, format_type, extra_option):
-    # TODO: clean this up later
-    lines = []
-    for student in students:
-        if "name" in student:
-            if "scores" in student:
-                if len(student["scores"]) > 0:
-                    avg = calculate_average(student["scores"])
-                    if include_details:
-                        if format_type == "long":
-                            lines.append("Student: " + student["name"] + " | Average: " + str(round(avg, 1)) + " | Grade: " + letter_grade(avg))
-                        else:
-                            if avg >= 50:
-                                lines.append(student["name"] + " " + letter_grade(avg))
-                            else:
-                                lines.append(student["name"] + " " + letter_grade(avg))
-                    else:
-                        lines.append(student["name"])
-                else:
-                    lines.append("Student: " + student["name"] + " | Not available")
-            else:
-                lines.append("Student: " + student["name"] + " | Not available")
-        else:
-            lines.append("Unknown student | Not available")
-    return "\n".join(lines)
+def _format_student(student, include_details, format_type):
+    name = student.get("name")
+    if name is None:
+        return f"Unknown student | {NOT_AVAILABLE}"
+    scores = student.get("scores")
+    if not scores:
+        return f"Student: {name} | {NOT_AVAILABLE}"
+    if not include_details:
+        return name
+    avg = calculate_average(scores)
+    grade = letter_grade(avg)
+    if format_type == "long":
+        return f"Student: {name} | Average: {round(avg, 1)} | Grade: {grade}"
+    return f"{name} {grade}"
+
+
+def build_report(students, include_details, format_type):
+    """Build a multi-line text report for a list of students."""
+    return "\n".join(_format_student(s, include_details, format_type) for s in students)
